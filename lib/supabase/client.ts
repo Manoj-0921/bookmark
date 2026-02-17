@@ -1,7 +1,8 @@
 import { createBrowserClient } from '@supabase/ssr';
+import { type SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/types';
 
-let supabaseClient: ReturnType<typeof createBrowserClient<Database>> | null = null;
+let supabaseClient: SupabaseClient<Database> | null = null;
 
 /**
  * Client-side Supabase client (Singleton)

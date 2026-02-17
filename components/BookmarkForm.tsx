@@ -1,6 +1,6 @@
 'use client';
 
-import { createClient } from '@/lib/supabase/client';
+import { addBookmark } from '@/app/actions';
 import { useState } from 'react';
 
 export default function BookmarkForm() {
@@ -9,7 +9,6 @@ export default function BookmarkForm() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
-    const supabase = createClient();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -18,7 +17,7 @@ export default function BookmarkForm() {
         setLoading(true);
 
         try {
-            // Validate URL
+            // Validate URL locally
             try {
                 new URL(url);
             } catch {
@@ -27,29 +26,18 @@ export default function BookmarkForm() {
                 return;
             }
 
-            // Get current user
-            const { data: { user } } = await supabase.auth.getUser();
+            // Call Server Action
+            const result = await addBookmark(url, title);
 
-            if (!user) {
-                setError('You must be logged in to add bookmarks');
-                setLoading(false);
-                return;
+            if (result.error) {
+                throw new Error(result.error);
             }
 
-            // Insert bookmark
-            const { error: insertError } = await supabase
-                .from('bookmarks')
-                .insert({
-                    user_id: user.id,
-                    title: title.trim() || new URL(url).hostname,
-                    url: url.trim(),
-                } as any)
-
-
-            if (insertError) throw insertError;
-
             // Dispatch local event for instant update in the same tab
-            window.dispatchEvent(new CustomEvent('bookmark-added'));
+            // This is useful if other components are listening for this event
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('bookmark-added'));
+            }
 
             // Reset form and show success
             setUrl('');
