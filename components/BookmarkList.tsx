@@ -13,15 +13,11 @@ export default function BookmarkList() {
     useEffect(() => {
         let channel: ReturnType<typeof supabase.channel> | null = null;
 
-        const fetchBookmarks = async () => {
+        const setupRealtime = async () => {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
 
-            if (!user) {
-                setBookmarks([]);
-                setLoading(false);
-                return;
-            }
-
+            // Fetch initial bookmarks
             const { data, error } = await supabase
                 .from('bookmarks')
                 .select('*')
@@ -34,7 +30,7 @@ export default function BookmarkList() {
 
             // Set up real-time subscription
             channel = supabase
-                .channel('bookmarks_channel')
+                .channel(`bookmarks-realtime-${user.id}`)
                 .on(
                     'postgres_changes',
                     {
@@ -44,35 +40,57 @@ export default function BookmarkList() {
                         filter: `user_id=eq.${user.id}`,
                     },
                     (payload) => {
+                        console.log('Real-time change received:', payload);
                         if (payload.eventType === 'INSERT') {
-                            setBookmarks((current) => [payload.new as Bookmark, ...current]);
+                            const newBookmark = payload.new as Bookmark;
+                            setBookmarks((current) => {
+                                // Avoid duplicates if already added optimistically (though we don't do it now)
+                                if (current.find(b => b.id === newBookmark.id)) return current;
+                                return [newBookmark, ...current];
+                            });
                         } else if (payload.eventType === 'DELETE') {
                             setBookmarks((current) =>
                                 current.filter((bookmark) => bookmark.id !== payload.old.id)
                             );
                         } else if (payload.eventType === 'UPDATE') {
+                            const updatedBookmark = payload.new as Bookmark;
                             setBookmarks((current) =>
                                 current.map((bookmark) =>
-                                    bookmark.id === payload.new.id ? (payload.new as Bookmark) : bookmark
+                                    bookmark.id === updatedBookmark.id ? updatedBookmark : bookmark
                                 )
                             );
                         }
                     }
                 )
-                .subscribe();
+                .subscribe((status) => {
+                    console.log('Real-time subscription status:', status);
+                });
         };
 
-        fetchBookmarks();
+        setupRealtime();
+
+        // Listen for local add events for instant fallback
+        const handleLocalAdd = () => {
+            console.log('Local bookmark-added event detected, re-fetching...');
+            setupRealtime();
+        };
+        window.addEventListener('bookmark-added', handleLocalAdd);
 
         return () => {
             if (channel) {
+                console.log('Cleaning up real-time subscription');
                 supabase.removeChannel(channel);
             }
+            window.removeEventListener('bookmark-added', handleLocalAdd);
         };
     }, [supabase]);
 
     const handleDelete = async (id: string) => {
+        // Optimistic update: remove from UI immediately
+        const previousBookmarks = [...bookmarks];
+        setBookmarks(current => current.filter(b => b.id !== id));
         setDeletingId(id);
+
         try {
             const { error } = await supabase
                 .from('bookmarks')
@@ -82,7 +100,9 @@ export default function BookmarkList() {
             if (error) throw error;
         } catch (error) {
             console.error('Error deleting bookmark:', error);
-            alert('Failed to delete bookmark');
+            // Rollback on error
+            setBookmarks(previousBookmarks);
+            alert('Failed to delete bookmark. Please try again.');
         } finally {
             setDeletingId(null);
         }

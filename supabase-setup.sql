@@ -55,11 +55,21 @@ COMMENT ON COLUMN bookmarks.title IS 'Display title for the bookmark';
 COMMENT ON COLUMN bookmarks.url IS 'The URL being bookmarked';
 COMMENT ON COLUMN bookmarks.created_at IS 'Timestamp when bookmark was created';
 
+-- 6. Enable Realtime replication
+-- This allows Supabase to broadcast changes to the frontend in real-time
+BEGIN;
+  -- Set replica identity to FULL so DELETE events contain all columns (needed for real-time filters)
+  ALTER TABLE bookmarks REPLICA IDENTITY FULL;
+  
+  -- Add the bookmarks table to the supabase_realtime publication
+  ALTER PUBLICATION supabase_realtime ADD TABLE bookmarks;
+COMMIT;
+
 -- ================================================
 -- Setup Complete! ✅
 -- ================================================
 -- Next Steps:
--- 1. Go to Database → Replication
--- 2. Find 'bookmarks' table
--- 3. Enable Realtime replication
+-- The real-time replication is now enabled via the script above.
+-- You can verify this in the Supabase Dashboard:
+-- Database → Replication → 'supabase_realtime' publication
 -- ================================================
