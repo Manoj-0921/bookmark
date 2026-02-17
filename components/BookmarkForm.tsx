@@ -39,11 +39,12 @@ export default function BookmarkForm() {
             // Insert bookmark
             const { error: insertError } = await supabase
                 .from('bookmarks')
-                .insert([{
+                .insert({
                     user_id: user.id,
                     title: title.trim() || new URL(url).hostname,
                     url: url.trim(),
-                }]);
+                } as any)
+
 
             if (insertError) throw insertError;
 
